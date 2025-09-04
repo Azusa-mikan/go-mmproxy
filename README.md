@@ -1,5 +1,7 @@
 # go-mmproxy
 
+[中文说明](README_zh.md)
+
 This is a Go reimplementation of [mmproxy](https://github.com/cloudflare/mmproxy), created to improve on mmproxy's runtime stability while providing potentially greater performance in terms of connection and packet throughput.
 
 `go-mmproxy` is a standalone application that unwraps HAProxy's [PROXY protocol](http://www.haproxy.org/download/1.8/doc/proxy-protocol.txt) (also adopted by other projects such as NGINX) so that the network connection to the end server comes from client's - instead of proxy server's - IP address and port number.
@@ -18,14 +20,21 @@ See [Go's Getting Started](https://golang.org/doc/install) if your package manag
 
 `go-mmproxy` has to be ran:
 
-- on the same server as the proxy target, as the communication happens over the loopback interface;
+- on the same server as the proxy target, as the communication happens over the loopback interface. The target must be a local loopback address, not another server address, otherwise it will trigger [Reverse Path Filter (RPF)](https://en.wikipedia.org/wiki/Reverse-path_forwarding) on the target server, causing packets to be dropped;
 - as root or with `CAP_NET_ADMIN` capability to be able to set `IP_TRANSPARENT` socket opt.
 
 ## Running
 
 ### Routing setup
 
-Route all traffic originating from loopback back to loopback:
+`go-mmproxy` will automatically set up the required routing rules when starting up. The program configures routes to direct all traffic originating from loopback back to loopback:
+
+- IPv4: `ip rule add from 127.0.0.1/8 iif lo table 123` and `ip route add local 0.0.0.0/0 dev lo table 123`
+- IPv6: `ip -6 rule add from ::1/128 iif lo table 123` and `ip -6 route add local ::/0 dev lo table 123`
+
+These rules are automatically cleaned up when the program exits.
+
+If the automatic setup fails or you encounter connection issues, you can manually set up the routing rules:
 
 ```shell
 ip rule add from 127.0.0.1/8 iif lo table 123

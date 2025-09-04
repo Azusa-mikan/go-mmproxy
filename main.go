@@ -1,3 +1,5 @@
+//go:build linux
+
 // Copyright 2019 Path Network, Inc. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
@@ -11,6 +13,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"os/signal"
 	"syscall"
 	"time"
 )
@@ -158,6 +161,32 @@ func main() {
 		os.Exit(1)
 	}
 	Opts.UDPCloseAfter = time.Duration(Opts.udpCloseAfter) * time.Second
+
+	// 检查权限
+	if err := checkPrivileges(); err != nil {
+		Opts.Logger.Error("privilege check failed", "error", err)
+		os.Exit(1)
+	}
+
+	// 设置透明代理所需的路由规则
+	if err := setupRoutingRules(); err != nil {
+		Opts.Logger.Error("failed to setup routing rules", "error", err)
+		Opts.Logger.Error("make sure to run as root or with CAP_NET_ADMIN capability")
+		os.Exit(1)
+	}
+
+	// 设置信号处理，确保程序退出时清理路由规则
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		Opts.Logger.Info("received shutdown signal, cleaning up...")
+		cleanupRoutingRules()
+		os.Exit(0)
+	}()
+
+	// 确保程序正常退出时也清理路由规则
+	defer cleanupRoutingRules()
 
 	listenErrors := make(chan error, Opts.Listeners)
 	for i := 0; i < Opts.Listeners; i++ {
