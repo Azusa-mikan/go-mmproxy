@@ -8,7 +8,7 @@
 ## 构建
 
 ```shell
-go install github.com/path-network/go-mmproxy@latest
+go install github.com/Azusa-mikan/go-mmproxy@latest
 ```
 
 您需要至少 `go 1.21` 来构建 `go-mmproxy` 二进制文件。
