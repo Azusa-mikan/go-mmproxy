@@ -9,6 +9,7 @@ package main
 import (
 	"bufio"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/netip"
@@ -39,7 +40,7 @@ type options struct {
 var Opts options
 
 func init() {
-	flag.StringVar(&Opts.Protocol, "p", "tcp", "Protocol that will be proxied: tcp, udp")
+	flag.StringVar(&Opts.Protocol, "p", "tcp", "Protocol that will be proxied: tcp, udp, all (both tcp and udp)")
 	flag.StringVar(&Opts.ListenAddrStr, "l", "0.0.0.0:8443", "Address the proxy listens on")
 	flag.StringVar(&Opts.TargetAddr4Str, "4", "127.0.0.1:443", "Address to which IPv4 traffic will be forwarded to")
 	flag.StringVar(&Opts.TargetAddr6Str, "6", "[::1]:443", "Address to which IPv6 traffic will be forwarded to")
@@ -58,6 +59,7 @@ func listen(listenerNum int, errors chan<- error) {
 	logger := Opts.Logger.With(slog.Int("listenerNum", listenerNum),
 		slog.String("protocol", Opts.Protocol), slog.String("listenAdr", Opts.ListenAddr.String()))
 
+	// 配置监听器，支持多个监听器时启用 SO_REUSEPORT
 	listenConfig := net.ListenConfig{}
 	if Opts.Listeners > 1 {
 		listenConfig.Control = func(network, address string, c syscall.RawConn) error {
@@ -70,10 +72,74 @@ func listen(listenerNum int, errors chan<- error) {
 		}
 	}
 
+	// 根据协议参数启动相应的监听器
 	if Opts.Protocol == "tcp" {
+		// 仅启动 TCP 监听器
 		TCPListen(&listenConfig, logger, errors)
-	} else {
+	} else if Opts.Protocol == "udp" {
+		// 仅启动 UDP 监听器
 		UDPListen(&listenConfig, logger, errors)
+	} else if Opts.Protocol == "all" {
+		// 同时启动 TCP 和 UDP 监听器
+		// 创建独立的错误通道，避免阻塞
+		tcpErrors := make(chan error, 1)
+		udpErrors := make(chan error, 1)
+		
+		// 启动 TCP 监听器（在独立的 goroutine 中）
+		go func() {
+			tcpLogger := logger.With(slog.String("actualProtocol", "tcp"))
+			tcpLogger.Info("starting TCP listener")
+			defer func() {
+				if r := recover(); r != nil {
+					tcpLogger.Error("TCP listener panicked", "panic", r)
+					tcpErrors <- fmt.Errorf("TCP listener panicked: %v", r)
+				}
+			}()
+			TCPListen(&listenConfig, tcpLogger, tcpErrors)
+		}()
+		
+		// 启动 UDP 监听器（在独立的 goroutine 中）
+		go func() {
+			udpLogger := logger.With(slog.String("actualProtocol", "udp"))
+			udpLogger.Info("starting UDP listener")
+			defer func() {
+				if r := recover(); r != nil {
+					udpLogger.Error("UDP listener panicked", "panic", r)
+					udpErrors <- fmt.Errorf("UDP listener panicked: %v", r)
+				}
+			}()
+			UDPListen(&listenConfig, udpLogger, udpErrors)
+		}()
+		
+		// 监控两个协议的错误状态
+		// 如果任一协议启动失败，记录错误但不退出程序
+		tcpFailed := false
+		udpFailed := false
+		
+		for {
+			select {
+			case tcpErr := <-tcpErrors:
+				if !tcpFailed {
+					tcpFailed = true
+					logger.Warn("TCP listener failed, continuing with UDP only", "error", tcpErr)
+					// 如果 UDP 也已经失败，则向主错误通道发送错误
+					if udpFailed {
+						errors <- fmt.Errorf("both TCP and UDP listeners failed")
+						return
+					}
+				}
+			case udpErr := <-udpErrors:
+				if !udpFailed {
+					udpFailed = true
+					logger.Warn("UDP listener failed, continuing with TCP only", "error", udpErr)
+					// 如果 TCP 也已经失败，则向主错误通道发送错误
+					if tcpFailed {
+						errors <- fmt.Errorf("both TCP and UDP listeners failed")
+						return
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -100,6 +166,12 @@ func loadAllowedSubnets() error {
 
 func main() {
 	flag.Parse()
+	
+	// 如果没有提供任何参数，显示帮助信息
+	if len(os.Args) == 1 {
+		flag.Usage()
+		os.Exit(0)
+	}
 	lvl := slog.LevelInfo
 	if Opts.Verbose > 0 {
 		lvl = slog.LevelDebug
@@ -112,8 +184,9 @@ func main() {
 		}
 	}
 
-	if Opts.Protocol != "tcp" && Opts.Protocol != "udp" {
-		Opts.Logger.Error("--protocol has to be one of udp, tcp", slog.String("protocol", Opts.Protocol))
+	// 验证协议参数：支持 tcp、udp 或 all（同时支持两种协议）
+	if Opts.Protocol != "tcp" && Opts.Protocol != "udp" && Opts.Protocol != "all" {
+		Opts.Logger.Error("--protocol has to be one of tcp, udp, all", slog.String("protocol", Opts.Protocol))
 		os.Exit(1)
 	}
 
