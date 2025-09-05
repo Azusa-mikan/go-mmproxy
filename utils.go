@@ -105,22 +105,22 @@ func executeCommand(name string, args ...string) error {
 func setupRoutingRules() error {
 	Opts.Logger.Info("setting up routing rules for transparent proxy")
 	
-	// IPv4 路由规则
+	// IPv4 路由规则（忽略错误，因为规则可能已经存在）
 	if err := executeCommand("ip", "rule", "add", "from", "127.0.0.1/8", "iif", "lo", "table", "123"); err != nil {
-		return fmt.Errorf("failed to add IPv4 rule: %w", err)
+		Opts.Logger.Debug("failed to add IPv4 rule (may already exist)", "error", err)
 	}
 	
 	if err := executeCommand("ip", "route", "add", "local", "0.0.0.0/0", "dev", "lo", "table", "123"); err != nil {
-		return fmt.Errorf("failed to add IPv4 route: %w", err)
+		Opts.Logger.Debug("failed to add IPv4 route (may already exist)", "error", err)
 	}
 	
-	// IPv6 路由规则
+	// IPv6 路由规则（忽略错误，因为规则可能已经存在）
 	if err := executeCommand("ip", "-6", "rule", "add", "from", "::1/128", "iif", "lo", "table", "123"); err != nil {
-		return fmt.Errorf("failed to add IPv6 rule: %w", err)
+		Opts.Logger.Debug("failed to add IPv6 rule (may already exist)", "error", err)
 	}
 	
 	if err := executeCommand("ip", "-6", "route", "add", "local", "::/0", "dev", "lo", "table", "123"); err != nil {
-		return fmt.Errorf("failed to add IPv6 route: %w", err)
+		Opts.Logger.Debug("failed to add IPv6 route (may already exist)", "error", err)
 	}
 	
 	Opts.Logger.Info("routing rules set up successfully")
