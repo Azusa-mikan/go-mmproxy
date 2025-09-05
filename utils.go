@@ -11,7 +11,10 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
+
+	"github.com/Azusa-mikan/go-mmproxy/i18n"
 )
 
 type Protocol int
@@ -96,60 +99,99 @@ func executeCommand(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("command '%s %v' failed: %w, output: %s", name, args, err, string(output))
+		return fmt.Errorf(i18n.T("error.command_failed"), name, args, err, string(output))
 	}
 	return nil
 }
 
+// isPermissionError 检查错误是否为权限相关错误
+func isPermissionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errorStr := err.Error()
+	// 检查常见的权限错误信息
+	return contains(errorStr, "permission denied") ||
+		contains(errorStr, "operation not permitted") ||
+		contains(errorStr, "not allowed") ||
+		contains(errorStr, "insufficient privileges")
+}
+
+// contains 检查字符串是否包含子字符串（忽略大小写）
+func contains(s, substr string) bool {
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+}
+
 // setupRoutingRules 设置透明代理所需的路由规则
 func setupRoutingRules() error {
-	Opts.Logger.Info("setting up routing rules for transparent proxy")
-	
-	// IPv4 路由规则（忽略错误，因为规则可能已经存在）
+	Opts.Logger.Info(i18n.T("log.routing_rules.setup"))
+
+	// 检查是否有权限执行ip命令
+	if os.Geteuid() != 0 {
+		// 非root用户，测试是否有CAP_NET_ADMIN权限
+		if err := executeCommand("ip", "rule", "list"); err != nil {
+			return fmt.Errorf("insufficient privileges to setup routing rules: %w", err)
+		}
+	}
+
+	// IPv4 路由规则
 	if err := executeCommand("ip", "rule", "add", "from", "127.0.0.1/8", "iif", "lo", "table", "123"); err != nil {
-		Opts.Logger.Debug("failed to add IPv4 rule (may already exist)", "error", err)
+		// 检查是否是权限错误
+		if isPermissionError(err) {
+			return fmt.Errorf("permission denied when adding IPv4 rule: %w", err)
+		}
+		Opts.Logger.Debug(i18n.T("log.routing_rules.ipv4_rule_failed"), "error", err)
 	}
-	
+
 	if err := executeCommand("ip", "route", "add", "local", "0.0.0.0/0", "dev", "lo", "table", "123"); err != nil {
-		Opts.Logger.Debug("failed to add IPv4 route (may already exist)", "error", err)
+		if isPermissionError(err) {
+			return fmt.Errorf("permission denied when adding IPv4 route: %w", err)
+		}
+		Opts.Logger.Debug(i18n.T("log.routing_rules.ipv4_route_failed"), "error", err)
 	}
-	
-	// IPv6 路由规则（忽略错误，因为规则可能已经存在）
+
+	// IPv6 路由规则
 	if err := executeCommand("ip", "-6", "rule", "add", "from", "::1/128", "iif", "lo", "table", "123"); err != nil {
-		Opts.Logger.Debug("failed to add IPv6 rule (may already exist)", "error", err)
+		if isPermissionError(err) {
+			return fmt.Errorf("permission denied when adding IPv6 rule: %w", err)
+		}
+		Opts.Logger.Debug(i18n.T("log.routing_rules.ipv6_rule_failed"), "error", err)
 	}
-	
+
 	if err := executeCommand("ip", "-6", "route", "add", "local", "::/0", "dev", "lo", "table", "123"); err != nil {
-		Opts.Logger.Debug("failed to add IPv6 route (may already exist)", "error", err)
+		if isPermissionError(err) {
+			return fmt.Errorf("permission denied when adding IPv6 route: %w", err)
+		}
+		Opts.Logger.Debug(i18n.T("log.routing_rules.ipv6_route_failed"), "error", err)
 	}
-	
-	Opts.Logger.Info("routing rules set up successfully")
+
+	Opts.Logger.Info(i18n.T("log.routing_rules.setup_success"))
 	return nil
 }
 
 // cleanupRoutingRules 清理透明代理的路由规则
 func cleanupRoutingRules() {
-	Opts.Logger.Info("cleaning up routing rules")
-	
+	Opts.Logger.Info(i18n.T("log.routing_rules.cleanup"))
+
 	// 清理IPv4路由规则（忽略错误，因为规则可能已经不存在）
 	if err := executeCommand("ip", "rule", "del", "from", "127.0.0.1/8", "iif", "lo", "table", "123"); err != nil {
-		Opts.Logger.Debug("failed to remove IPv4 rule (may not exist)", "error", err)
+		Opts.Logger.Debug(i18n.T("log.routing_rules.ipv4_rule_remove_failed"), "error", err)
 	}
-	
+
 	if err := executeCommand("ip", "route", "del", "local", "0.0.0.0/0", "dev", "lo", "table", "123"); err != nil {
-		Opts.Logger.Debug("failed to remove IPv4 route (may not exist)", "error", err)
+		Opts.Logger.Debug(i18n.T("log.routing_rules.ipv4_route_remove_failed"), "error", err)
 	}
-	
+
 	// 清理IPv6路由规则（忽略错误，因为规则可能已经不存在）
 	if err := executeCommand("ip", "-6", "rule", "del", "from", "::1/128", "iif", "lo", "table", "123"); err != nil {
-		Opts.Logger.Debug("failed to remove IPv6 rule (may not exist)", "error", err)
+		Opts.Logger.Debug(i18n.T("log.routing_rules.ipv6_rule_remove_failed"), "error", err)
 	}
-	
+
 	if err := executeCommand("ip", "-6", "route", "del", "local", "::/0", "dev", "lo", "table", "123"); err != nil {
-		Opts.Logger.Debug("failed to remove IPv6 route (may not exist)", "error", err)
+		Opts.Logger.Debug(i18n.T("log.routing_rules.ipv6_route_remove_failed"), "error", err)
 	}
-	
-	Opts.Logger.Info("routing rules cleanup completed")
+
+	Opts.Logger.Info(i18n.T("log.routing_rules.cleanup_success"))
 }
 
 // checkPrivileges 检查程序是否有足够的权限执行ip命令
@@ -158,11 +200,11 @@ func checkPrivileges() error {
 	if os.Geteuid() == 0 {
 		return nil
 	}
-	
+
 	// 如果不是root，尝试执行一个简单的ip命令来测试权限
 	if err := executeCommand("ip", "rule", "list"); err != nil {
-		return fmt.Errorf("insufficient privileges to execute ip commands. Please run as root or with CAP_NET_ADMIN capability: %w", err)
+		return fmt.Errorf(i18n.T("error.insufficient_privileges")+": %w", err)
 	}
-	
+
 	return nil
 }

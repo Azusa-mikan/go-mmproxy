@@ -9,12 +9,15 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/netip"
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/Azusa-mikan/go-mmproxy/i18n"
 )
 
 type udpConnection struct {
@@ -44,7 +47,7 @@ func udpCloseAfterInactivity(conn *udpConnection, socketClosures chan<- string) 
 func udpCopyFromUpstream(downstream net.PacketConn, conn *udpConnection) {
 	rawConn, err := conn.upstream.SyscallConn()
 	if err != nil {
-		conn.logger.Error("failed to retrieve raw connection from upstream socket", "error", err)
+		conn.logger.Error(i18n.T("log.udp.upstream_raw_connection_failed"), "error", err)
 		return
 	}
 
@@ -80,7 +83,7 @@ func udpCopyFromUpstream(downstream net.PacketConn, conn *udpConnection) {
 		err = syscallErr
 	}
 	if err != nil {
-		conn.logger.Debug("failed to read from upstream", "error", err)
+		conn.logger.Debug(i18n.T("log.udp.upstream_read_failed"), "error", err)
 	}
 }
 
@@ -100,6 +103,12 @@ func udpGetSocketFromMap(downstream net.PacketConn, downstreamAddr, saddr net.Ad
 		targetAddr = Opts.TargetAddr4
 	}
 
+	// 检查IPv6目标地址是否已配置
+	if !targetAddr.Addr().Is4() && Opts.TargetAddr6Str == "" {
+		logger.Error(i18n.T("error.target6_addr.not_configured"))
+		return nil, fmt.Errorf("IPv6 target address not configured")
+	}
+
 	logger = logger.With(slog.String("downstreamAddr", downstreamAddr.String()), slog.String("targetAddr", targetAddr.String()))
 	dialer := net.Dialer{LocalAddr: saddr}
 	if saddr != nil {
@@ -108,12 +117,12 @@ func udpGetSocketFromMap(downstream net.PacketConn, downstreamAddr, saddr net.Ad
 	}
 
 	if Opts.Verbose > 1 {
-		logger.Debug("new connection")
+		logger.Debug(i18n.T("log.udp.new_connection"))
 	}
 
 	conn, err := dialer.Dial("udp", targetAddr.String())
 	if err != nil {
-		logger.Debug("failed to connect to upstream", "error", err)
+		logger.Debug(i18n.T("log.udp.upstream_connect_failed"), "error", err)
 		return nil, err
 	}
 
@@ -136,12 +145,12 @@ func UDPListen(listenConfig *net.ListenConfig, logger *slog.Logger, errors chan<
 	ctx := context.Background()
 	ln, err := listenConfig.ListenPacket(ctx, "udp", Opts.ListenAddr.String())
 	if err != nil {
-		logger.Error("failed to bind listener", "error", err)
+		logger.Error(i18n.T("log.udp.bind_failed"), "error", err)
 		errors <- err
 		return
 	}
 
-	logger.Info("listening")
+	logger.Info(i18n.T("log.udp.listening"))
 
 	socketClosures := make(chan string, 1024)
 	connectionMap := make(map[string]*udpConnection)
@@ -152,18 +161,18 @@ func UDPListen(listenConfig *net.ListenConfig, logger *slog.Logger, errors chan<
 	for {
 		n, remoteAddr, err := ln.ReadFrom(buffer)
 		if err != nil {
-			logger.Error("failed to read from socket", "error", err)
+			logger.Error(i18n.T("log.udp.read_failed"), "error", err)
 			continue
 		}
 
 		if !CheckOriginAllowed(remoteAddr.(*net.UDPAddr).IP) {
-			logger.Debug("packet origin not in allowed subnets", slog.String("remoteAddr", remoteAddr.String()))
+			logger.Debug(i18n.T("log.udp.packet_origin_not_allowed"), slog.String("remoteAddr", remoteAddr.String()))
 			continue
 		}
 
 		saddr, _, restBytes, err := PROXYReadRemoteAddr(buffer[:n], UDP)
 		if err != nil {
-			logger.Debug("failed to parse PROXY header", "error", err, slog.String("remoteAddr", remoteAddr.String()))
+			logger.Debug(i18n.T("log.udp.proxy_header_parse_failed"), "error", err, slog.String("remoteAddr", remoteAddr.String()))
 			continue
 		}
 
@@ -187,7 +196,7 @@ func UDPListen(listenConfig *net.ListenConfig, logger *slog.Logger, errors chan<
 
 		_, err = conn.upstream.Write(restBytes)
 		if err != nil {
-			conn.logger.Error("failed to write to upstream socket", "error", err)
+			conn.logger.Error(i18n.T("log.udp.upstream_write_failed"), "error", err)
 		}
 	}
 }

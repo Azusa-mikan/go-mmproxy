@@ -14,13 +14,19 @@ import (
 var buffers sync.Pool
 
 func init() {
-	buffers.New = func() any { return make([]byte, math.MaxUint16) }
+	buffers.New = func() any { return &[]byte{} }
 }
 
 func GetBuffer() []byte {
-	return buffers.Get().([]byte)
+	buf := buffers.Get().(*[]byte)
+	if cap(*buf) < math.MaxUint16 {
+		*buf = make([]byte, math.MaxUint16)
+	} else {
+		*buf = (*buf)[:math.MaxUint16]
+	}
+	return *buf
 }
 
 func PutBuffer(buf []byte) {
-	buffers.Put(buf) // nolint:staticcheck
+	buffers.Put(&buf)
 }

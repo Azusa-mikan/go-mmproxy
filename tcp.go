@@ -12,6 +12,8 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+
+	"github.com/Azusa-mikan/go-mmproxy/i18n"
 )
 
 func tcpCopyData(dst net.Conn, src net.Conn, ch chan<- error) {
@@ -25,12 +27,12 @@ func tcpHandleConnection(conn net.Conn, logger *slog.Logger) {
 		slog.String("localAddr", conn.LocalAddr().String()))
 
 	if !CheckOriginAllowed(conn.RemoteAddr().(*net.TCPAddr).IP) {
-		logger.Debug("connection origin not in allowed subnets", slog.Bool("dropConnection", true))
+		logger.Debug(i18n.T("log.tcp.connection_origin_not_allowed"), slog.Bool("dropConnection", true))
 		return
 	}
 
 	if Opts.Verbose > 1 {
-		logger.Debug("new connection")
+		logger.Debug(i18n.T("log.tcp.new_connection"))
 	}
 
 	buffer := GetBuffer()
@@ -42,13 +44,13 @@ func tcpHandleConnection(conn net.Conn, logger *slog.Logger) {
 
 	n, err := conn.Read(buffer)
 	if err != nil {
-		logger.Debug("failed to read PROXY header", "error", err, slog.Bool("dropConnection", true))
+		logger.Debug(i18n.T("log.tcp.proxy_header_read_failed"), "error", err, slog.Bool("dropConnection", true))
 		return
 	}
 
 	saddr, _, restBytes, err := PROXYReadRemoteAddr(buffer[:n], TCP)
 	if err != nil {
-		logger.Debug("failed to parse PROXY header", "error", err, slog.Bool("dropConnection", true))
+		logger.Debug(i18n.T("log.tcp.proxy_header_parse_failed"), "error", err, slog.Bool("dropConnection", true))
 		return
 	}
 
@@ -61,13 +63,19 @@ func tcpHandleConnection(conn net.Conn, logger *slog.Logger) {
 		targetAddr = Opts.TargetAddr4
 	}
 
+	// 检查IPv6目标地址是否已配置
+	if !targetAddr.Addr().Is4() && Opts.TargetAddr6Str == "" {
+		logger.Error(i18n.T("error.target6_addr.not_configured"))
+		return
+	}
+
 	clientAddr := "UNKNOWN"
 	if saddr != nil {
 		clientAddr = saddr.String()
 	}
 	logger = logger.With(slog.String("clientAddr", clientAddr), slog.String("targetAddr", targetAddr.String()))
 	if Opts.Verbose > 1 {
-		logger.Debug("successfully parsed PROXY header")
+		logger.Debug(i18n.T("log.tcp.proxy_header_parsed"))
 	}
 
 	dialer := net.Dialer{LocalAddr: saddr}
@@ -76,32 +84,32 @@ func tcpHandleConnection(conn net.Conn, logger *slog.Logger) {
 	}
 	upstreamConn, err := dialer.Dial("tcp", targetAddr.String())
 	if err != nil {
-		logger.Debug("failed to establish upstream connection", "error", err, slog.Bool("dropConnection", true))
+		logger.Debug(i18n.T("log.tcp.upstream_connection_failed"), "error", err, slog.Bool("dropConnection", true))
 		return
 	}
 
 	defer upstreamConn.Close()
 	if Opts.Verbose > 1 {
-		logger.Debug("successfully established upstream connection")
+		logger.Debug(i18n.T("log.tcp.upstream_connection_success"))
 	}
 
-	if err := conn.(*net.TCPConn).SetNoDelay(true); err != nil {
-		logger.Debug("failed to set nodelay on downstream connection", "error", err, slog.Bool("dropConnection", true))
+	if nodeDelayErr := conn.(*net.TCPConn).SetNoDelay(true); nodeDelayErr != nil {
+		logger.Debug(i18n.T("log.tcp.nodelay_downstream_failed"), "error", nodeDelayErr, slog.Bool("dropConnection", true))
 	} else if Opts.Verbose > 1 {
-		logger.Debug("successfully set NoDelay on downstream connection")
+		logger.Debug(i18n.T("log.tcp.nodelay_downstream_success"))
 	}
 
-	if err := upstreamConn.(*net.TCPConn).SetNoDelay(true); err != nil {
-		logger.Debug("failed to set nodelay on upstream connection", "error", err, slog.Bool("dropConnection", true))
+	if nodeDelayErr := upstreamConn.(*net.TCPConn).SetNoDelay(true); nodeDelayErr != nil {
+		logger.Debug(i18n.T("log.tcp.nodelay_upstream_failed"), "error", nodeDelayErr, slog.Bool("dropConnection", true))
 	} else if Opts.Verbose > 1 {
-		logger.Debug("successfully set NoDelay on upstream connection")
+		logger.Debug(i18n.T("log.tcp.nodelay_upstream_success"))
 	}
 
 	for len(restBytes) > 0 {
-		n, err := upstreamConn.Write(restBytes)
-		if err != nil {
-			logger.Debug("failed to write data to upstream connection",
-				"error", err, slog.Bool("dropConnection", true))
+		n, writeErr := upstreamConn.Write(restBytes)
+		if writeErr != nil {
+			logger.Debug(i18n.T("log.tcp.upstream_write_failed"),
+				"error", writeErr, slog.Bool("dropConnection", true))
 			return
 		}
 		restBytes = restBytes[n:]
@@ -116,9 +124,9 @@ func tcpHandleConnection(conn net.Conn, logger *slog.Logger) {
 
 	err = <-outErr
 	if err != nil {
-		logger.Debug("connection broken", "error", err, slog.Bool("dropConnection", true))
+		logger.Debug(i18n.T("log.tcp.connection_broken"), "error", err, slog.Bool("dropConnection", true))
 	} else if Opts.Verbose > 1 {
-		logger.Debug("connection closing")
+		logger.Debug(i18n.T("log.tcp.connection_closing"))
 	}
 }
 
@@ -126,17 +134,17 @@ func TCPListen(listenConfig *net.ListenConfig, logger *slog.Logger, errors chan<
 	ctx := context.Background()
 	ln, err := listenConfig.Listen(ctx, "tcp", Opts.ListenAddr.String())
 	if err != nil {
-		logger.Error("failed to bind listener", "error", err)
+		logger.Error(i18n.T("log.tcp.bind_failed"), "error", err)
 		errors <- err
 		return
 	}
 
-	logger.Info("listening")
+	logger.Info(i18n.T("log.tcp.listening"))
 
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			logger.Error("failed to accept new connection", "error", err)
+			logger.Error(i18n.T("log.tcp.accept_failed"), "error", err)
 			errors <- err
 			return
 		}

@@ -31,7 +31,7 @@ func readRemoteAddrPROXYv2(ctrlBuf []byte, protocol Protocol) (net.Addr, net.Add
 	var dataLen uint16
 	reader := bytes.NewReader(ctrlBuf[14:16])
 	if err := binary.Read(reader, binary.BigEndian, &dataLen); err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to decode address data length: %s", err.Error())
+		return nil, nil, nil, fmt.Errorf("failed to decode address data length: %w", err)
 	}
 
 	if len(ctrlBuf) < 16+int(dataLen) {
@@ -49,10 +49,10 @@ func readRemoteAddrPROXYv2(ctrlBuf []byte, protocol Protocol) (net.Addr, net.Add
 		reader = bytes.NewReader(ctrlBuf[48:])
 	}
 	if err := binary.Read(reader, binary.BigEndian, &sport); err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to decode source port: %s", err.Error())
+		return nil, nil, nil, fmt.Errorf("failed to decode source port: %w", err)
 	}
 	if err := binary.Read(reader, binary.BigEndian, &dport); err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to decode destination port: %s", err.Error())
+		return nil, nil, nil, fmt.Errorf("failed to decode destination port: %w", err)
 	}
 
 	var srcIP, dstIP net.IP
@@ -122,7 +122,7 @@ func PROXYReadRemoteAddr(buf []byte, protocol Protocol) (net.Addr, net.Addr, []b
 		[]byte{0x0D, 0x0A, 0x0D, 0x0A, 0x00, 0x0D, 0x0A, 0x51, 0x55, 0x49, 0x54, 0x0A}) {
 		saddr, daddr, rest, err := readRemoteAddrPROXYv2(buf, protocol)
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to parse PROXY v2 header: %s", err.Error())
+			return nil, nil, nil, fmt.Errorf("failed to parse PROXY v2 header: %w", err)
 		}
 		return saddr, daddr, rest, err
 	}
@@ -131,7 +131,7 @@ func PROXYReadRemoteAddr(buf []byte, protocol Protocol) (net.Addr, net.Addr, []b
 	if protocol == TCP && len(buf) >= 8 && bytes.Equal(buf[:5], []byte("PROXY")) {
 		saddr, daddr, rest, err := readRemoteAddrPROXYv1(buf)
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to parse PROXY v1 header: %s", err.Error())
+			return nil, nil, nil, fmt.Errorf("failed to parse PROXY v1 header: %w", err)
 		}
 		return saddr, daddr, rest, err
 	}
