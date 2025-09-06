@@ -20,65 +20,65 @@ jobs:
           - goos: linux
             goarch: amd64
             goamd64: v1
-            name: go-mmproxy-linux-amd64-v1
+            name: go-mmproxy-linux-amd64-${{ github.ref_name }}-v1
           - goos: linux
             goarch: amd64
             goamd64: v2
-            name: go-mmproxy-linux-amd64-v2
+            name: go-mmproxy-linux-amd64-${{ github.ref_name }}-v2
           - goos: linux
             goarch: amd64
             goamd64: v3
-            name: go-mmproxy-linux-amd64-v3
+            name: go-mmproxy-linux-amd64-${{ github.ref_name }}-v3
           - goos: linux
             goarch: amd64
             goamd64: v4
-            name: go-mmproxy-linux-amd64-v4
+            name: go-mmproxy-linux-amd64-${{ github.ref_name }}-v4
           
           # ARM 架构变体
           - goos: linux
             goarch: arm64
-            name: go-mmproxy-linux-arm64
+            name: go-mmproxy-linux-arm64-${{ github.ref_name }}
           - goos: linux
             goarch: arm
             goarm: 5
-            name: go-mmproxy-linux-armv5
+            name: go-mmproxy-linux-armv5-${{ github.ref_name }}
           - goos: linux
             goarch: arm
             goarm: 6
-            name: go-mmproxy-linux-armv6
+            name: go-mmproxy-linux-armv6-${{ github.ref_name }}
           - goos: linux
             goarch: arm
             goarm: 7
-            name: go-mmproxy-linux-armv7
+            name: go-mmproxy-linux-armv7-${{ github.ref_name }}
           
           # 其他架构
           - goos: linux
             goarch: 386
-            name: go-mmproxy-linux-386
+            name: go-mmproxy-linux-386-${{ github.ref_name }}
           - goos: linux
             goarch: ppc64
-            name: go-mmproxy-linux-ppc64
+            name: go-mmproxy-linux-ppc64-${{ github.ref_name }}
           - goos: linux
             goarch: ppc64le
-            name: go-mmproxy-linux-ppc64le
+            name: go-mmproxy-linux-ppc64le-${{ github.ref_name }}
           - goos: linux
             goarch: mips
-            name: go-mmproxy-linux-mips
+            name: go-mmproxy-linux-mips-${{ github.ref_name }}
           - goos: linux
             goarch: mipsle
-            name: go-mmproxy-linux-mipsle
+            name: go-mmproxy-linux-mipsle-${{ github.ref_name }}
           - goos: linux
             goarch: mips64
-            name: go-mmproxy-linux-mips64
+            name: go-mmproxy-linux-mips64-${{ github.ref_name }}
           - goos: linux
             goarch: mips64le
-            name: go-mmproxy-linux-mips64le
+            name: go-mmproxy-linux-mips64le-${{ github.ref_name }}
           - goos: linux
             goarch: riscv64
-            name: go-mmproxy-linux-riscv64
+            name: go-mmproxy-linux-riscv64-${{ github.ref_name }}
           - goos: linux
             goarch: s390x
-            name: go-mmproxy-linux-s390x
+            name: go-mmproxy-linux-s390x-${{ github.ref_name }}
     
     steps:
     - name: Checkout code
