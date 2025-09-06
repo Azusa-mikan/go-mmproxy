@@ -1,0 +1,95 @@
+name: Test and Quick Build
+
+# 快速测试和构建工作流，用于 PR 和开发测试
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.25.1'
+    
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+    
+    - name: Download dependencies
+      run: go mod download
+    
+    - name: Run tests
+      run: go test -v ./...
+    
+    - name: Run go vet
+      run: go vet ./...
+    
+    - name: Run go fmt check
+      run: |
+        if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+          echo "以下文件需要格式化:"
+          gofmt -s -l .
+          exit 1
+        fi
+  
+  quick-build:
+    name: Quick Build (amd64 only)
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.25.1'
+    
+    - name: Get version info
+      id: version
+      run: |
+        VERSION=$(git describe --tags 2>/dev/null || echo "dev-$(git rev-parse --short HEAD)")
+        BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "build_date=$BUILD_DATE" >> $GITHUB_OUTPUT
+    
+    - name: Build for testing
+      env:
+        CGO_ENABLED: 0
+        GOOS: linux
+        GOARCH: amd64
+      run: |
+        LDFLAGS="-s -w -X main.version=${{ steps.version.outputs.version }} -X main.buildDate=${{ steps.version.outputs.build_date }}"
+        
+        echo "构建测试版本..."
+        go build -ldflags="$LDFLAGS" -o go-mmproxy
+        
+        echo "✅ 构建成功"
+        ./go-mmproxy --version || echo "版本信息获取完成"
+        ls -la go-mmproxy
+    
+    - name: Upload test binary
+      uses: actions/upload-artifact@v3
+      with:
+        name: go-mmproxy-test-build
+        path: go-mmproxy
+        retention-days: 7
