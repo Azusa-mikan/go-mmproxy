@@ -21,14 +21,7 @@ jobs:
       uses: actions/setup-go@v4
       with:
         go-version: '1.25.1'
-    
-    - name: Cache Go modules
-      uses: actions/cache@v3
-      with:
-        path: ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-
+        cache: false
     
     - name: Download dependencies
       run: go mod download
@@ -62,6 +55,7 @@ jobs:
       uses: actions/setup-go@v4
       with:
         go-version: '1.25.1'
+        cache: false
     
     - name: Get version info
       id: version
@@ -87,9 +81,9 @@ jobs:
         ./go-mmproxy --version || echo "版本信息获取完成"
         ls -la go-mmproxy
     
-    - name: Upload test binary
-      uses: actions/upload-artifact@v3
+    - name: Upload binary
+      uses: actions/upload-artifact@v4
       with:
-        name: go-mmproxy-test-build
+        name: go-mmproxy
         path: go-mmproxy
         retention-days: 7
