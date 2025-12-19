@@ -257,10 +257,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 设置透明代理所需的路由规则
 	if err := setupRoutingRules(); err != nil {
 		Opts.Logger.Error(i18n.T("error.routing_rules.setup_failed"), "error", err)
-		Opts.Logger.Error(i18n.T("error.routing_rules.permission"))
+		if isPermissionError(err) {
+			Opts.Logger.Error(i18n.T("error.routing_rules.permission"))
+		}
 		os.Exit(1)
 	}
 

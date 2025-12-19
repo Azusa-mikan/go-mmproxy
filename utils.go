@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 
 	"github.com/Azusa-mikan/go-mmproxy/i18n"
@@ -102,6 +103,34 @@ func executeCommand(name string, args ...string) error {
 	return nil
 }
 
+func isPermissionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	lower := strings.ToLower(s)
+	if strings.Contains(lower, "permission denied") ||
+		strings.Contains(lower, "operation not permitted") {
+		return true
+	}
+	if strings.Contains(s, i18n.T("error.insufficient_privileges")) {
+		return true
+	}
+	return false
+}
+
+func isAlreadyExistsError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	lower := strings.ToLower(s)
+	if strings.Contains(lower, "file exists") || strings.Contains(s, "已存在") {
+		return true
+	}
+	return false
+}
+
 func setupRoutingRules() error {
 	Opts.Logger.Info(i18n.T("log.routing_rules.setup"))
 
@@ -112,19 +141,35 @@ func setupRoutingRules() error {
 	}
 
 	if err := executeCommand("ip", "rule", "add", "from", "127.0.0.1/8", "iif", "lo", "table", "123"); err != nil {
-		return fmt.Errorf("failed to add IPv4 rule: %w", err)
+		if isAlreadyExistsError(err) {
+			Opts.Logger.Debug(i18n.T("log.routing_rules.ipv4_rule_failed"), "error", err)
+		} else {
+			return fmt.Errorf("failed to add IPv4 rule: %w", err)
+		}
 	}
 
 	if err := executeCommand("ip", "route", "add", "local", "0.0.0.0/0", "dev", "lo", "table", "123"); err != nil {
-		return fmt.Errorf("failed to add IPv4 route: %w", err)
+		if isAlreadyExistsError(err) {
+			Opts.Logger.Debug(i18n.T("log.routing_rules.ipv4_route_failed"), "error", err)
+		} else {
+			return fmt.Errorf("failed to add IPv4 route: %w", err)
+		}
 	}
 
 	if err := executeCommand("ip", "-6", "rule", "add", "from", "::1/128", "iif", "lo", "table", "123"); err != nil {
-		return fmt.Errorf("failed to add IPv6 rule: %w", err)
+		if isAlreadyExistsError(err) {
+			Opts.Logger.Debug(i18n.T("log.routing_rules.ipv6_rule_failed"), "error", err)
+		} else {
+			return fmt.Errorf("failed to add IPv6 rule: %w", err)
+		}
 	}
 
 	if err := executeCommand("ip", "-6", "route", "add", "local", "::/0", "dev", "lo", "table", "123"); err != nil {
-		return fmt.Errorf("failed to add IPv6 route: %w", err)
+		if isAlreadyExistsError(err) {
+			Opts.Logger.Debug(i18n.T("log.routing_rules.ipv6_route_failed"), "error", err)
+		} else {
+			return fmt.Errorf("failed to add IPv6 route: %w", err)
+		}
 	}
 
 	Opts.Logger.Info(i18n.T("log.routing_rules.setup_success"))
