@@ -13,7 +13,6 @@ import (
 	"os/exec"
 	"strings"
 	"syscall"
-
 	"github.com/Azusa-mikan/go-mmproxy/i18n"
 )
 
