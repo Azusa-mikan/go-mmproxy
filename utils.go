@@ -11,7 +11,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"strings"
 	"syscall"
 
 	"github.com/Azusa-mikan/go-mmproxy/i18n"
@@ -94,7 +93,6 @@ func DialUpstreamControl(sport int) func(string, string, syscall.RawConn) error 
 	}
 }
 
-// executeCommand 执行系统命令并返回错误
 func executeCommand(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	output, err := cmd.CombinedOutput()
@@ -104,65 +102,29 @@ func executeCommand(name string, args ...string) error {
 	return nil
 }
 
-// isPermissionError 检查错误是否为权限相关错误
-func isPermissionError(err error) bool {
-	if err == nil {
-		return false
-	}
-	errorStr := err.Error()
-	// 检查常见的权限错误信息
-	return contains(errorStr, "permission denied") ||
-		contains(errorStr, "operation not permitted") ||
-		contains(errorStr, "not allowed") ||
-		contains(errorStr, "insufficient privileges")
-}
-
-// contains 检查字符串是否包含子字符串（忽略大小写）
-func contains(s, substr string) bool {
-	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
-}
-
-// setupRoutingRules 设置透明代理所需的路由规则
 func setupRoutingRules() error {
 	Opts.Logger.Info(i18n.T("log.routing_rules.setup"))
 
-	// 检查是否有权限执行ip命令
 	if os.Geteuid() != 0 {
-		// 非root用户，测试是否有CAP_NET_ADMIN权限
 		if err := executeCommand("ip", "rule", "list"); err != nil {
 			return fmt.Errorf("insufficient privileges to setup routing rules: %w", err)
 		}
 	}
 
-	// IPv4 路由规则
 	if err := executeCommand("ip", "rule", "add", "from", "127.0.0.1/8", "iif", "lo", "table", "123"); err != nil {
-		// 检查是否是权限错误
-		if isPermissionError(err) {
-			return fmt.Errorf("permission denied when adding IPv4 rule: %w", err)
-		}
-		Opts.Logger.Debug(i18n.T("log.routing_rules.ipv4_rule_failed"), "error", err)
+		return fmt.Errorf("failed to add IPv4 rule: %w", err)
 	}
 
 	if err := executeCommand("ip", "route", "add", "local", "0.0.0.0/0", "dev", "lo", "table", "123"); err != nil {
-		if isPermissionError(err) {
-			return fmt.Errorf("permission denied when adding IPv4 route: %w", err)
-		}
-		Opts.Logger.Debug(i18n.T("log.routing_rules.ipv4_route_failed"), "error", err)
+		return fmt.Errorf("failed to add IPv4 route: %w", err)
 	}
 
-	// IPv6 路由规则
 	if err := executeCommand("ip", "-6", "rule", "add", "from", "::1/128", "iif", "lo", "table", "123"); err != nil {
-		if isPermissionError(err) {
-			return fmt.Errorf("permission denied when adding IPv6 rule: %w", err)
-		}
-		Opts.Logger.Debug(i18n.T("log.routing_rules.ipv6_rule_failed"), "error", err)
+		return fmt.Errorf("failed to add IPv6 rule: %w", err)
 	}
 
 	if err := executeCommand("ip", "-6", "route", "add", "local", "::/0", "dev", "lo", "table", "123"); err != nil {
-		if isPermissionError(err) {
-			return fmt.Errorf("permission denied when adding IPv6 route: %w", err)
-		}
-		Opts.Logger.Debug(i18n.T("log.routing_rules.ipv6_route_failed"), "error", err)
+		return fmt.Errorf("failed to add IPv6 route: %w", err)
 	}
 
 	Opts.Logger.Info(i18n.T("log.routing_rules.setup_success"))

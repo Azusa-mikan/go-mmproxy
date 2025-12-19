@@ -7,6 +7,7 @@
 package i18n
 
 import (
+	"embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -25,6 +26,9 @@ var defaultLocalizer *Localizer
 
 // supportedLanguages 支持的语言列表
 var supportedLanguages = []string{"en", "zh"}
+
+//go:embed locales/*.json
+var embeddedLocales embed.FS
 
 // Init 初始化国际化系统
 func Init(lang string) error {
@@ -62,7 +66,14 @@ func NewLocalizer(lang string) (*Localizer, error) {
 
 // loadMessages 加载语言消息文件
 func (l *Localizer) loadMessages() error {
-	// 获取当前执行文件的目录
+	embeddedPath := "locales/" + l.lang + ".json"
+	if data, err := embeddedLocales.ReadFile(embeddedPath); err == nil {
+		if err := json.Unmarshal(data, &l.messages); err != nil {
+			return fmt.Errorf("failed to parse embedded message file %s: %w", embeddedPath, err)
+		}
+		return nil
+	}
+
 	execPath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
@@ -70,13 +81,6 @@ func (l *Localizer) loadMessages() error {
 
 	execDir := filepath.Dir(execPath)
 	messageFile := filepath.Join(execDir, "i18n", "locales", l.lang+".json")
-
-	// 如果在执行目录找不到，尝试在源码目录查找
-	if _, statErr := os.Stat(messageFile); os.IsNotExist(statErr) {
-		// 尝试相对于当前工作目录
-		wd, _ := os.Getwd()
-		messageFile = filepath.Join(wd, "i18n", "locales", l.lang+".json")
-	}
 
 	data, err := os.ReadFile(messageFile)
 	if err != nil {
